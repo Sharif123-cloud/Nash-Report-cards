@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nasheebah – Cloud School Reports</title>
+  <!-- Firebase SDKs (v9 modular via compat for simplicity) -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <!-- html2canvas & jsPDF for PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background: #f0f4f8; padding: 20px; }
+    .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); overflow: hidden; }
+    .header { background: linear-gradient(135deg, #6a3093, #a044ff); color: white; padding: 20px 30px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .header .logo-area { display: flex; align-items: center; gap: 15px; }
+    .header .logo-area img { height: 60px; border-radius: 50%; border: 2px solid white; }
+    .header .logo-area svg { height: 60px; }
+    .header h1 { font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+    .header .sub { font-size: 14px; opacity: 0.9; margin-left: auto; }
+    .nav { background: #f8f9fa; padding: 15px 30px; display: flex; flex-wrap: wrap; gap: 10px; border-bottom: 2px solid #e9ecef; }
+    .nav button { background: transparent; border: none; padding: 8px 18px; border-radius: 30px; font-weight: 600; cursor: pointer; transition: 0.3s; }
+    .nav button.active { background: #6a3093; color: white; }
+    .nav button:hover { background: #e2d5f0; }
+    .page { display: none; padding: 30px; }
+    .page.active { display: block; }
+    .page h2 { margin-bottom: 20px; color: #333; border-bottom: 3px solid #6a3093; padding-bottom: 10px; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; font-weight: 600; margin-bottom: 5px; color: #444; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 10px; font-size: 16px; }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+    .btn { background: #6a3093; color: white; padding: 12px 30px; border: none; border-radius: 30px; font-weight: 600; cursor: pointer; transition: 0.3s; }
+    .btn:hover { background: #4a1f6b; }
+    .btn-secondary { background: #6c757d; }
+    .btn-secondary:hover { background: #5a6268; }
+    .btn-danger { background: #dc3545; }
+    .btn-danger:hover { background: #b02a37; }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin: 15px 0; }
+    .card { background: #f8f9fa; padding: 15px; border-radius: 12px; border: 1px solid #e9ecef; }
+    .card label { display: block; margin-bottom: 5px; }
+    .student-list, .subject-list, .teacher-list { margin: 10px 0; max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 10px; padding: 10px; }
+    .student-item, .subject-item, .teacher-item { display: flex; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; align-items: center; }
+    .student-item button, .subject-item button, .teacher-item button { background: #dc3545; color: white; border: none; border-radius: 20px; padding: 2px 12px; cursor: pointer; }
+    .marks-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    .marks-table th, .marks-table td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+    .marks-table th { background: #6a3093; color: white; }
+    .marks-table input { width: 80px; padding: 5px; border: 1px solid #ccc; border-radius: 6px; }
+    .report-preview { background: white; padding: 20px; border: 2px dashed #6a3093; border-radius: 12px; margin-top: 20px; }
+    .report-preview .school-header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
+    .report-preview .school-header img { max-height: 80px; }
+    .report-preview table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+    .report-preview table, .report-preview th, .report-preview td { border: 1px solid #333; }
+    .report-preview th, .report-preview td { padding: 6px 10px; font-size: 14px; }
+    .footer-note { margin-top: 20px; font-size: 12px; color: #555; }
+    .badge-upload { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+    .badge-upload img { max-height: 100px; border-radius: 10px; border: 2px solid #ddd; }
+    .terms { background: #f8f9fa; padding: 20px; border-radius: 12px; margin-top: 30px; border-left: 5px solid #6a3093; }
+    .terms h3 { margin-bottom: 10px; color: #6a3093; }
+    .terms ul { padding-left: 20px; }
+    .developer-info { text-align: center; margin-top: 30px; padding: 15px; background: #f0f4f8; border-radius: 12px; font-size: 14px; }
+    .developer-info strong { color: #6a3093; }
+    .login-page { max-width: 400px; margin: 0 auto; padding: 40px 20px; }
+    .login-page .form-group { margin-bottom: 20px; }
+    .login-page .btn { width: 100%; }
+    .auth-toggle { text-align: center; margin-top: 15px; }
+    .auth-toggle a { color: #6a3093; cursor: pointer; text-decoration: underline; }
+    #userInfo { display: flex; align-items: center; gap: 15px; margin-left: auto; }
+    #userInfo span { color: white; }
+    .logout-btn { background: rgba(255,255,255,0.2); color: white; border: 1px solid white; border-radius: 20px; padding: 5px 15px; cursor: pointer; }
+    .logout-btn:hover { background: rgba(255,255,255,0.4); }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: white; padding: 0; }
+      .container { box-shadow: none; border-radius: 0; }
+      .report-preview { border: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="container" id="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="logo-area">
+      <div id="logoDisplay">
+        <svg viewBox="0 0 100 100" width="60" height="60">
+          <circle cx="50" cy="50" r="45" fill="#fff" stroke="#6a3093" stroke-width="4"/>
+          <text x="50" y="50" font-size="24" text-anchor="middle" dominant-baseline="central" fill="#6a3093" font-weight="bold">N</text>
+          <text x="50" y="75" font-size="10" text-anchor="middle" fill="#6a3093">Nasheebah</text>
+        </svg>
+      </div>
+      <h1>Nasheebah</h1>
+    </div>
+    <div class="sub">Cloud School Report System</div>
+    <div id="userInfo">
+      <span id="userEmail"></span>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <!-- Navigation (hidden until logged in) -->
+  <div class="nav no-print" id="navBar" style="display:none;">
+    <button class="active" data-page="page1">1. Home</button>
+    <button data-page="page2">2. Classes</button>
+    <button data-page="page3">3. Students</button>
+    <button data-page="page4">4. Subjects</button>
+    <button data-page="page5">5. Teachers</button>
+    <button data-page="page6">6. Marks</button>
+    <button data-page="page7">7. A‑Level Report</button>
+    <button data-page="page8">8. O‑Level Report</button>
+  </div>
+
+  <!-- =========== LOGIN / SIGNUP PAGE =========== -->
+  <div class="page active" id="pageLogin">
+    <div class="login-page">
+      <h2 style="text-align:center; border:none;">Welcome to Nasheebah</h2>
+      <p style="text-align:center; color:#666;">Sign in or create an account to manage your school data.</p>
+      <div id="authError" style="color:red; text-align:center; margin:10px 0;"></div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="authEmail" placeholder="school@example.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="authPassword" placeholder="Min 6 characters">
+      </div>
+      <button class="btn" id="authButton" onclick="handleAuth()">Sign In</button>
+      <div class="auth-toggle">
+        <span id="authToggleText">Don't have an account? <a onclick="toggleAuthMode()">Sign Up</a></span>
+      </div>
+      <div class="developer-info" style="margin-top:30px;">
+        <strong>Developer:</strong> Sserunjogi Sharif | 📞 +256787816686
+      </div>
+    </div>
+  </div>
+
+  <!-- =========== PAGE 1: HOME =========== -->
+  <div class="page" id="page1">
+    <h2>🏫 School Setup</h2>
+    <div class="form-group">
+      <label>School Name</label>
+      <input type="text" id="schoolName" placeholder="e.g. Kibinge High School">
+    </div>
+    <div class="form-group">
+      <label>School Address & Contact</label>
+      <textarea id="schoolAddress" rows="3"></textarea>
+    </div>
+    <div class="form-group badge-upload">
+      <div>
+        <label>School Badge (upload image)</label>
+        <input type="file" id="badgeUpload" accept="image/*">
+      </div>
+      <div id="badgePreview">
+        <img id="badgeImg" src="" alt="Badge preview" style="display:none; max-height:100px;">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Head Teacher Name</label>
+      <input type="text" id="headTeacher" placeholder="e.g. RAYYAN MUHAMMAD">
+    </div>
+    <button class="btn" onclick="saveSchoolData()">Save School Details</button>
+    <div class="terms">
+      <h3>📜 Terms & Conditions</h3>
+      <ul>
+        <li>All data is stored in Firebase Firestore – secure and backed up.</li>
+        <li>Only authorized users can access their school data.</li>
+        <li>The school is responsible for verifying the accuracy of all entered marks.</li>
+        <li>The developer is not liable for data loss or misuse.</li>
+        <li>By using this system, you agree to these terms.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- =========== PAGE 2: CLASSES =========== -->
+  <div class="page" id="page2">
+    <h2>📚 Select Classes (Senior 1 – 6)</h2>
+    <div class="card-grid" id="classCheckboxes"></div>
+    <button class="btn" onclick="saveClasses()">Save Classes</button>
+  </div>
+
+  <!-- =========== PAGE 3: STUDENTS =========== -->
+  <div class="page" id="page3">
+    <h2>👨‍🎓 Add Students per Class</h2>
+    <div id="studentForms"></div>
+  </div>
+
+  <!-- =========== PAGE 4: SUBJECTS =========== -->
+  <div class="page" id="page4">
+    <h2>📖 Subject Setup</h2>
+    <div id="subjectSetup"></div>
+  </div>
+
+  <!-- =========== PAGE 5: TEACHERS =========== -->
+  <div class="page" id="page5">
+    <h2>👩‍🏫 Teachers & Subjects</h2>
+    <div class="form-group">
+      <label>Teacher Name</label>
+      <input type="text" id="teacherName" placeholder="e.g. Mr. Katumba">
+    </div>
+    <div class="form-group">
+      <label>Subject(s) Taught (hold Ctrl to select multiple)</label>
+      <select id="teacherSubjects" multiple style="height:120px;"></select>
+    </div>
+    <button class="btn" onclick="addTeacher()">Add Teacher</button>
+    <div id="teacherList" class="teacher-list" style="margin-top:20px;"></div>
+    <button class="btn btn-secondary" onclick="saveTeachers()">Save Teachers</button>
+  </div>
+
+  <!-- =========== PAGE 6: MARKS ENTRY =========== -->
+  <div class="page" id="page6">
+    <h2>📝 Enter Marks</h2>
+    <div class="form-group" style="display:flex; gap:20px; flex-wrap:wrap;">
+      <div style="flex:1;">
+        <label>Select Class</label>
+        <select id="markClass" onchange="loadMarkSubject()"></select>
+      </div>
+      <div style="flex:1;">
+        <label>Select Subject</label>
+        <select id="markSubject" onchange="loadMarkStudents()"></select>
+      </div>
+    </div>
+    <div id="markEntryArea"><p>Select a class and subject to load marks.</p></div>
+    <button class="btn" onclick="saveMarks()">Save Marks</button>
+  </div>
+
+  <!-- =========== PAGE 7: A-LEVEL REPORT =========== -->
+  <div class="page" id="page7">
+    <h2>📄 A‑Level Report Card</h2>
+    <div class="form-group">
+      <label>Select Student</label>
+      <select id="alevelStudent" onchange="generateAlevelReport()"></select>
+    </div>
+    <div id="alevelReportArea" class="report-preview"></div>
+    <button class="btn" onclick="downloadPDF('alevel')">Download PDF</button>
+  </div>
+
+  <!-- =========== PAGE 8: O-LEVEL REPORT =========== -->
+  <div class="page" id="page8">
+    <h2>📄 O‑Level Report Card</h2>
+    <div class="form-group">
+      <label>Select Student</label>
+      <select id="olevelStudent" onchange="generateOlevelReport()"></select>
+    </div>
+    <div id="olevelReportArea" class="report-preview"></div>
+    <button class="btn" onclick="downloadPDF('olevel')">Download PDF</button>
+  </div>
+
+</div>
+
+<script>
+  // ============================================================
+  // FIREBASE CONFIG – Replace with your own!
+  // ============================================================
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+  // TODO: Add your Firebase config above
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  // ============================================================
+  // GLOBAL STATE
+  // ============================================================
+  let currentUser = null;
+  let data = {
+    school: { name: '', address: '', headTeacher: '', badge: '' },
+    classes: [],
+    students: {},
+    subjects: {},
+    teachers: [],
+    marks: {}
+  };
+  let dataLoaded = false;
+
+  // ============================================================
+  // AUTHENTICATION
+  // ============================================================
+  let isLogin = true;
+
+  function toggleAuthMode() {
+    isLogin = !isLogin;
+    document.getElementById('authButton').textContent = isLogin ? 'Sign In' : 'Sign Up';
+    document.getElementById('authToggleText').innerHTML = isLogin ?
+      "Don't have an account? <a onclick='toggleAuthMode()'>Sign Up</a>" :
+      "Already have an account? <a onclick='toggleAuthMode()'>Sign In</a>";
+    document.getElementById('authError').textContent = '';
+  }
+
+  async function handleAuth() {
+    const email = document.getElementById('authEmail').value.trim();
+    const pass = document.getElementById('authPassword').value.trim();
+    const errorEl = document.getElementById('authError');
+    errorEl.textContent = '';
+    if (!email || !pass) { errorEl.textContent = 'Please fill all fields.'; return; }
+
+    try {
+      let userCred;
+      if (isLogin) {
+        userCred = await auth.signInWithEmailAndPassword(email, pass);
+      } else {
+        userCred = await auth.createUserWithEmailAndPassword(email, pass);
+      }
+      currentUser = userCred.user;
+      document.getElementById('userEmail').textContent = currentUser.email;
+      document.getElementById('navBar').style.display = 'flex';
+      document.getElementById('pageLogin').classList.remove('active');
+      document.getElementById('page1').classList.add('active');
+      // Load data from Firestore
+      await loadUserData();
+      // Populate UI
+      populateAll();
+    } catch (err) {
+      errorEl.textContent = err.message;
+    }
+  }
+
+  auth.onAuthStateChanged(async user => {
+    if (user) {
+      currentUser = user;
+      document.getElementById('userEmail').textContent = user.email;
+      document.getElementById('navBar').style.display = 'flex';
+      document.getElementById('pageLogin').classList.remove('active');
+      document.getElementById('page1').classList.add('active');
+      await loadUserData();
+      populateAll();
+    } else {
+      // Show login
+      document.getElementById('navBar').style.display = 'none';
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('pageLogin').classList.add('active');
+      currentUser = null;
+    }
+  });
+
+  function logout() {
+    auth.signOut();
+  }
+
+  // ============================================================
+  // FIRESTORE DATA OPERATIONS
+  // ============================================================
+  async function loadUserData() {
+    if (!currentUser) return;
+    const docRef = db.collection('schools').doc(currentUser.uid);
+    const doc = await docRef.get();
+    if (doc.exists) {
+      data = doc.data();
+    } else {
+      // Initialize empty data
+      data = { school: { name: '', address: '', headTeacher: '', badge: '' }, classes: [], students: {}, subjects: {}, teachers: [], marks: {} };
+    }
+    dataLoaded = true;
+  }
+
+  async function saveUserData() {
+    if (!currentUser) return;
+    const docRef = db.collection('schools').doc(currentUser.uid);
+    await docRef.set(data);
+  }
+
+  // ============================================================
+  // UI HELPERS
+  // ============================================================
+  function populateAll() {
+    // Fill school fields
+    document.getElementById('schoolName').value = data.school.name || '';
+    document.getElementById('schoolAddress').value = data.school.address || '';
+    document.getElementById('headTeacher').value = data.school.headTeacher || '';
+    if (data.school.badge) {
+      document.getElementById('badgeImg').src = data.school.badge;
+      document.getElementById('badgeImg').style.display = 'block';
+      document.getElementById('logoDisplay').innerHTML = `<img src="${data.school.badge}" style="height:60px;border-radius:50%;border:2px solid white;">`;
+    }
+    renderClassCheckboxes();
+    renderStudentForms();
+    renderSubjectSetup();
+    populateTeacherSubjectSelect();
+    populateMarkSelects();
+    populateStudentSelect('alevel');
+    populateStudentSelect('olevel');
+  }
+
+  // ============================================================
+  // PAGE 1: SCHOOL
+  // ============================================================
+  async function saveSchoolData() {
+    data.school.name = document.getElementById('schoolName').value;
+    data.school.address = document.getElementById('schoolAddress').value;
+    data.school.headTeacher = document.getElementById('headTeacher').value;
+    await saveUserData();
+    alert('School details saved to cloud!');
+  }
+
+  document.getElementById('badgeUpload').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = async function(ev) {
+        const img = document.getElementById('badgeImg');
+        img.src = ev.target.result;
+        img.style.display = 'block';
+        data.school.badge = ev.target.result;
+        await saveUserData();
+        document.getElementById('logoDisplay').innerHTML = `<img src="${ev.target.result}" style="height:60px;border-radius:50%;border:2px solid white;">`;
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  // ============================================================
+  // PAGE 2: CLASSES
+  // ============================================================
+  function renderClassCheckboxes() {
+    const container = document.getElementById('classCheckboxes');
+    const levels = ['Senior 1','Senior 2','Senior 3','Senior 4','Senior 5','Senior 6'];
+    let html = '';
+    levels.forEach(l => {
+      const checked = data.classes.includes(l) ? 'checked' : '';
+      html += `<div class="card"><label><input type="checkbox" class="classChk" value="${l}" ${checked}> ${l}</label></div>`;
+    });
+    container.innerHTML = html;
+  }
+
+  async function saveClasses() {
+    const chks = document.querySelectorAll('.classChk:checked');
+    data.classes = Array.from(chks).map(c => c.value);
+    await saveUserData();
+    alert('Classes saved to cloud!');
+  }
+
+  // ============================================================
+  // PAGE 3: STUDENTS
+  // ============================================================
+  function renderStudentForms() {
+    const container = document.getElementById('studentForms');
+    if (!data.classes.length) {
+      container.innerHTML = '<p>Please set up classes first (Page 2).</p>';
+      return;
+    }
+    let html = '';
+    data.classes.forEach(cls => {
+      html += `<div style="border:1px solid #ddd; border-radius:12px; padding:15px; margin-bottom:20px;">`;
+      html += `<h4>${cls}</h4>`;
+      html += `<div class="form-group" style="display:flex; gap:10px; flex-wrap:wrap;">`;
+      html += `<input type="text" id="studentName_${cls}" placeholder="Student Name">`;
+      html += `<select id="studentGender_${cls}"><option value="Male">Male</option><option value="Female">Female</option></select>`;
+      html += `<input type="text" id="studentSection_${cls}" placeholder="Section (e.g. DAY)" value="DAY">`;
+      html += `<button class="btn btn-secondary" onclick="addStudent('${cls}')">Add</button>`;
+      html += `</div>`;
+      html += `<div id="studentList_${cls}" class="student-list">`;
+      if (data.students[cls]) {
+        data.students[cls].forEach(s => {
+          html += `<div class="student-item"><span>${s.name} (${s.gender}, ${s.section})</span><button onclick="removeStudent('${cls}','${s.id}')">✕</button></div>`;
+        });
+      }
+      html += `</div></div>`;
+    });
+    container.innerHTML = html;
+  }
+
+  async function addStudent(cls) {
+    const name = document.getElementById(`studentName_${cls}`).value.trim();
+    const gender = document.getElementById(`studentGender_${cls}`).value;
+    const section = document.getElementById(`studentSection_${cls}`).value.trim();
+    if (!name) return alert('Enter student name');
+    if (!data.students[cls]) data.students[cls] = [];
+    data.students[cls].push({ id: Date.now().toString(36)+Math.random().toString(36).substr(2,5), name, gender, section });
+    await saveUserData();
+    renderStudentForms();
+  }
+
+  async function removeStudent(cls, id) {
+    if (!confirm('Remove this student?')) return;
+    data.students[cls] = data.students[cls].filter(s => s.id !== id);
+    await saveUserData();
+    renderStudentForms();
+  }
+
+  // ============================================================
+  // PAGE 4: SUBJECTS (O-Level & A-Level)
+  // ============================================================
+  const OLEVEL_CORE = ['English','Mathematics','Physics','Chemistry','Biology','Geography','History and Political Education','Swahili','Physical Education','ICT Skills'];
+
+  function renderSubjectSetup() {
+    const container = document.getElementById('subjectSetup');
+    if (!data.classes.length) {
+      container.innerHTML = '<p>Please set up classes first.</p>';
+      return;
+    }
+    let html = '';
+    data.classes.forEach(cls => {
+      const isOlevel = ['Senior 1','Senior 2','Senior 3','Senior 4'].includes(cls);
+      html += `<div style="border:1px solid #ddd; border-radius:12px; padding:15px; margin-bottom:20px;">`;
+      html += `<h4>${cls}</h4>`;
+      if (isOlevel) {
+        html += `<p><strong>Core Subjects (auto-included):</strong> ${OLEVEL_CORE.join(', ')}</p>`;
+        html += `<div class="form-group"><label>Add Elective Subject</label><input type="text" id="newElective_${cls}" placeholder="e.g. Agriculture"></div>`;
+        html += `<button class="btn btn-secondary" onclick="addElective('${cls}')">Add Elective</button>`;
+        html += `<div id="subjectList_${cls}" class="subject-list">`;
+        // Ensure core subjects exist
+        if (!data.subjects[cls]) data.subjects[cls] = [];
+        const coreIds = OLEVEL_CORE.map(name => {
+          let found = data.subjects[cls].find(s => s.name === name);
+          if (!found) {
+            found = { id: Date.now().toString(36)+Math.random().toString(36).substr(2,5), name, isCore: true };
+            data.subjects[cls].push(found);
+          }
+          return found;
+        });
+        // Remove duplicates
+        const unique = [];
+        const seen = new Set();
+        data.subjects[cls].forEach(s => {
+          if (!seen.has(s.name)) { seen.add(s.name); unique.push(s); }
+        });
+        data.subjects[cls] = unique;
+        // Save after modifications
+        saveUserData();
+        unique.forEach(s => {
+          html += `<div class="subject-item"><span>${s.name} ${s.isCore ? '(Core)' : '(Elective)'}</span>`;
+          if (!s.isCore) html += `<button onclick="removeSubject('${cls}','${s.id}')">✕</button>`;
+          html += `</div>`;
+        });
+        html += `</div>`;
+      } else {
+        // A-Level
+        html += `<p><strong>Auto-included:</strong> General Paper (compulsory)</p>`;
+        html += `<div class="form-group"><label>Principal Subjects (select up to 3)</label>`;
+        const principalList = ['Physics','Chemistry','Biology','Mathematics','Economics','History','Geography','Literature','Art','Entrepreneurship'];
+        const currentA = data.subjects[cls] || [];
+        if (!currentA.find(s => s.name === 'General Paper')) {
+          currentA.push({ id: Date.now().toString(36)+Math.random().toString(36).substr(2,5), name: 'General Paper', isCore: true });
+        }
+        html += `<select id="principalSel_${cls}" multiple style="height:100px;">`;
+        principalList.forEach(p => {
+          const selected = currentA.some(s => s.name === p) ? 'selected' : '';
+          html += `<option value="${p}" ${selected}>${p}</option>`;
+        });
+        html += `</select></div>`;
+        html += `<div class="form-group"><label>Subsidiary Subject (choose one)</label>`;
+        const subOptions = ['Sub-Math','ICT'];
+        const currentSub = currentA.find(s => s.name === 'Sub-Math' || s.name === 'ICT');
+        html += `<select id="subsidiarySel_${cls}">`;
+        subOptions.forEach(s => {
+          const selected = (currentSub && currentSub.name === s) ? 'selected' : '';
+          html += `<option value="${s}" ${selected}>${s}</option>`;
+        });
+        html += `</select></div>`;
+        html += `<button class="btn btn-secondary" onclick="saveASubjects('${cls}')">Save A-Level Subjects</button>`;
+        html += `<div id="subjectList_${cls}" class="subject-list">`;
+        (data.subjects[cls] || []).forEach(s => {
+          html += `<div class="subject-item"><span>${s.name} ${s.isCore ? '(Core)' : ''}</span></div>`;
+        });
+        html += `</div>`;
+      }
+      html += `</div>`;
+    });
+    container.innerHTML = html;
+  }
+
+  async function addElective(cls) {
+    const input = document.getElementById(`newElective_${cls}`);
+    const name = input.value.trim();
+    if (!name) return alert('Enter subject name');
+    if (!data.subjects[cls]) data.subjects[cls] = [];
+    if (data.subjects[cls].find(s => s.name === name)) return alert('Subject already exists');
+    data.subjects[cls].push({ id: Date.now().toString(36)+Math.random().toString(36).substr(2,5), name, isCore: false });
+    await saveUserData();
+    renderSubjectSetup();
+  }
+
+  async function removeSubject(cls, id) {
+    if (!confirm('Remove this subject?')) return;
+    data.subjects[cls] = data.subjects[cls].filter(s => s.id !== id);
+    await saveUserData();
+    renderSubjectSetup();
+  }
+
+  async function saveASubjects(cls) {
+    const principalSel = document.getElementById(`principalSel_${cls}`);
+    const selected = Array.from(principalSel.selectedOptions).map(o => o.value);
+    const subsidiary = document.getElementById(`subsidiarySel_${cls}`).value;
+    const subjects = [];
+    subjects.push({ id: Date.now().toString(36)+Math.random().toString(36).substr(2,5), name: 'General Paper', isCore: true });
+    selected.forEach(name => {
+      subjects.push({ id: Date.now().toString(36)+Math.random().toString(36).substr(2,5), name, isCore: false });
+    });
+    subjects.push({ id: Date.now().toString(36)+Math.random().toString(36).substr(2,5), name: subsidiary, isCore: false });
+    data.subjects[cls] = subjects;
+    await saveUserData();
+    renderSubjectSetup();
+    alert('A-Level subjects saved to cloud!');
+  }
+
+  // ============================================================
+  // PAGE 5: TEACHERS
+  // ============================================================
+  function populateTeacherSubjectSelect() {
+    const sel = document.getElementById('teacherSubjects');
+    const allSubjects = new Set();
+    Object.values(data.subjects).forEach(arr => arr.forEach(s => allSubjects.add(s.name)));
+    sel.innerHTML = '';
+    allSubjects.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    renderTeacherList();
+  }
+
+  async function addTeacher() {
+    const name = document.getElementById('teacherName').value.trim();
+    const sel = document.getElementById('teacherSubjects');
+    const subjects = Array.from(sel.selectedOptions).map(o => o.value);
+    if (!name) return alert('Enter teacher name');
+    if (!subjects.length) return alert('Select at least one subject');
+    data.teachers.push({ id: Date.now().toString(36)+Math.random().toString(36).substr(2,5), name, subjects });
+    await saveUserData();
+    document.getElementById('teacherName').value = '';
+    renderTeacherList();
+    alert('Teacher added to cloud.');
+  }
+
+  function renderTeacherList() {
+    const container = document.getElementById('teacherList');
+    if (!data.teachers.length) { container.innerHTML = '<p>No teachers added yet.</p>'; return; }
+    let html = '';
+    data.teachers.forEach(t => {
+      html += `<div class="teacher-item"><span><strong>${t.name}</strong> (${t.subjects.join(', ')})</span>
+        <button onclick="removeTeacher('${t.id}')">✕</button></div>`;
+    });
+    container.innerHTML = html;
+  }
+
+  async function removeTeacher(id) {
+    if (!confirm('Remove this teacher?')) return;
+    data.teachers = data.teachers.filter(t => t.id !== id);
+    await saveUserData();
+    renderTeacherList();
+  }
+
+  function saveTeachers() { alert('Teachers already saved to cloud.'); }
+
+  // ============================================================
+  // PAGE 6: MARKS ENTRY
+  // ============================================================
+  function populateMarkSelects() {
+    const classSel = document.getElementById('markClass');
+    classSel.innerHTML = '';
+    data.classes.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      classSel.appendChild(opt);
+    });
+    loadMarkSubject();
+  }
+
+  function loadMarkSubject() {
+    const cls = document.getElementById('markClass').value;
+    const subSel = document.getElementById('markSubject');
+    subSel.innerHTML = '';
+    if (!cls || !data.subjects[cls]) return;
+    data.subjects[cls].forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.name;
+      subSel.appendChild(opt);
+    });
+    loadMarkStudents();
+  }
+
+  function loadMarkStudents() {
+    const cls = document.getElementById('markClass').value;
+    const subId = document.getElementById('markSubject').value;
+    const area = document.getElementById('markEntryArea');
+    if (!cls || !subId) { area.innerHTML = '<p>Select class and subject.</p>'; return; }
+    const students = data.students[cls] || [];
+    const subject = data.subjects[cls]?.find(s => s.id === subId);
+    if (!subject) { area.innerHTML = '<p>Subject not found.</p>'; return; }
+    const isOlevel = ['Senior 1','Senior 2','Senior 3','Senior 4'].includes(cls);
+    let html = `<table class="marks-table"><thead><tr><th>Student</th><th>FS (20%)</th><th>EOT (80%)</th><th>Total</th><th>Grade</th></tr></thead><tbody>`;
+    students.forEach(stu => {
+      const key = `${cls}_${subId}_${stu.id}`;
+      const mark = data.marks[key] || { fs: '', eot: '', total: '', grade: '' };
+      html += `<tr>
+        <td>${stu.name}</td>
+        <td><input type="number" class="markFS" data-key="${key}" value="${mark.fs}" min="0" max="100" onchange="calcTotal('${key}')"></td>
+        <td><input type="number" class="markEOT" data-key="${key}" value="${mark.eot}" min="0" max="100" onchange="calcTotal('${key}')"></td>
+        <td class="markTotal" id="total_${key}">${mark.total || ''}</td>
+        <td class="markGrade" id="grade_${key}">${mark.grade || ''}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+    area.innerHTML = html;
+  }
+
+  async function calcTotal(key) {
+    const fsInput = document.querySelector(`.markFS[data-key="${key}"]`);
+    const eotInput = document.querySelector(`.markEOT[data-key="${key}"]`);
+    const fs = parseFloat(fsInput.value) || 0;
+    const eot = parseFloat(eotInput.value) || 0;
+    const total = fs + eot;
+    document.getElementById(`total_${key}`).textContent = total.toFixed(1);
+    const grade = getGrade(total);
+    document.getElementById(`grade_${key}`).textContent = grade;
+    data.marks[key] = { fs, eot, total: total.toFixed(1), grade };
+    await saveUserData(); // auto-save on change
+  }
+
+  function getGrade(mark) {
+    if (mark >= 80) return 'A';
+    if (mark >= 70) return 'B';
+    if (mark >= 60) return 'C';
+    if (mark >= 50) return 'D';
+    return 'E';
+  }
+
+  function saveMarks() { alert('Marks saved to cloud!'); }
+
+  // ============================================================
+  // PAGE 7 & 8: REPORTS
+  // ============================================================
+  function populateStudentSelect(type) {
+    const sel = document.getElementById(type === 'alevel' ? 'alevelStudent' : 'olevelStudent');
+    const classes = data.classes.filter(c => {
+      if (type === 'alevel') return ['Senior 5','Senior 6'].includes(c);
+      else return ['Senior 1','Senior 2','Senior 3','Senior 4'].includes(c);
+    });
+    sel.innerHTML = '';
+    classes.forEach(cls => {
+      (data.students[cls] || []).forEach(stu => {
+        const opt = document.createElement('option');
+        opt.value = `${cls}|${stu.id}`;
+        opt.textContent = `${cls} - ${stu.name}`;
+        sel.appendChild(opt);
+      });
+    });
+    if (type === 'alevel') generateAlevelReport();
+    else generateOlevelReport();
+  }
+
+  function generateAlevelReport() {
+    const sel = document.getElementById('alevelStudent');
+    const val = sel.value;
+    if (!val) { document.getElementById('alevelReportArea').innerHTML = '<p>Select a student.</p>'; return; }
+    const [cls, stuId] = val.split('|');
+    const student = data.students[cls]?.find(s => s.id === stuId);
+    if (!student) return;
+    const subjects = data.subjects[cls] || [];
+    let rows = '';
+    subjects.forEach(sub => {
+      const key = `${cls}_${sub.id}_${stuId}`;
+      const mark = data.marks[key] || {};
+      const grade = mark.grade || 'N/A';
+      rows += `<tr><td>${sub.name}</td><td>N/A</td><td>N/A</td><td>${grade}</td><td>Teacher</td></tr>`;
+    });
+    const passes = subjects.filter(s => {
+      const key = `${cls}_${s.id}_${stuId}`;
+      const m = data.marks[key] || {};
+      return m.grade && m.grade !== 'E' && m.grade !== 'N/A';
+    }).length;
+    const totalPoints = subjects.reduce((sum, s) => {
+      const key = `${cls}_${s.id}_${stuId}`;
+      const m = data.marks[key] || {};
+      const grade = m.grade || '';
+      const pts = { 'A':5,'B':4,'C':3,'D':2,'E':1 }[grade] || 0;
+      return sum + pts;
+    }, 0);
+
+    const html = `
+      <div id="alevelReportContent">
+        <div class="school-header">
+          <img src="${data.school.badge || ''}" style="max-height:60px;" alt="Badge">
+          <h2>${data.school.name}</h2>
+          <p>${data.school.address}</p>
+          <h3>"A" LEVEL PROGRESSIVE TERMLY REPORT</h3>
+        </div>
+        <div style="display:flex; justify-content:space-between; flex-wrap:wrap;">
+          <p><strong>Name:</strong> ${student.name}</p>
+          <p><strong>Section:</strong> ${student.section}</p>
+          <p><strong>Class:</strong> ${cls}</p>
+          <p><strong>Term:</strong> 1</p>
+          <p><strong>Year:</strong> 2026</p>
+        </div>
+        <table>
+          <thead><tr><th>Subject</th><th>Paper Code</th><th>Papers</th><th>Grade</th><th>Teacher</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="margin:10px 0;">
+          <p><strong>Principal passes:</strong> ${passes} &nbsp;|&nbsp; <strong>Subsidiary passes:</strong> 0 &nbsp;|&nbsp; <strong>Total Points:</strong> ${totalPoints}</p>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-top:15px;">
+          <div><strong>Head Teacher's Comment:</strong> <br><textarea rows="3" cols="40" placeholder="Enter comment..."></textarea></div>
+          <div><strong>Head Teacher:</strong> ${data.school.headTeacher}</div>
+        </div>
+        <div style="margin-top:10px; font-size:12px;">
+          <p>Next term begins on: ___________</p>
+          <p><em>This document is invalid without a school stamp.</em></p>
+        </div>
+        <div style="margin-top:15px; border-top:2px solid #333; padding-top:10px;">
+          <table>
+            <tr><th>Grade</th><td>A</td><td>B</td><td>C</td><td>D</td><td>E</td></tr>
+            <tr><th>Range</th><td>80-100</td><td>70-79</td><td>60-69</td><td>50-59</td><td>0-49</td></tr>
+            <tr><th>Points</th><td>5</td><td>4</td><td>3</td><td>2</td><td>1</td></tr>
+          </table>
+        </div>
+      </div>
+    `;
+    document.getElementById('alevelReportArea').innerHTML = html;
+  }
+
+  function generateOlevelReport() {
+    const sel = document.getElementById('olevelStudent');
+    const val = sel.value;
+    if (!val) { document.getElementById('olevelReportArea').innerHTML = '<p>Select a student.</p>'; return; }
+    const [cls, stuId] = val.split('|');
+    const student = data.students[cls]?.find(s => s.id === stuId);
+    if (!student) return;
+    const subjects = data.subjects[cls] || [];
+    let rows = '';
+    subjects.forEach(sub => {
+      const key = `${cls}_${sub.id}_${stuId}`;
+      const mark = data.marks[key] || {};
+      const fs = mark.fs || '';
+      const eot = mark.eot || '';
+      const total = mark.total || '';
+      const grade = mark.grade || 'N/A';
+      const points = { 'A':5,'B':4,'C':3,'D':2,'E':1 }[grade] || 0;
+      rows += `<tr><td>${sub.name}</td><td>${fs}</td><td>${eot}</td><td>${total}</td><td>${points}</td><td>${grade}</td><td>Teacher</td></tr>`;
+    });
+
+    const html = `
+      <div id="olevelReportContent">
+        <div class="school-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <img src="${data.school.badge || ''}" style="max-height:60px;" alt="Badge">
+          <div>
+            <h2>${data.school.name}</h2>
+            <p>${data.school.address}</p>
+            <h3>STUDENT REPORT CARD FOR TERM 1 2026</h3>
+          </div>
+          <div>Photo Placeholder</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; margin:15px 0;">
+          <p><strong>STUDENT NAME:</strong> ${student.name}</p>
+          <p><strong>GENDER:</strong> ${student.gender}</p>
+          <p><strong>CLASS:</strong> ${cls}</p>
+          <p><strong>SECTION:</strong> ${student.section}</p>
+        </div>
+        <table>
+          <thead><tr><th>SUBJECT</th><th>FS (20%)</th><th>EOT (80%)</th><th>TOTAL</th><th>X/3</th><th>GRADE</th><th>INITIALS</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="display:flex; justify-content:space-between; margin:15px 0;">
+          <div><strong>Class Teacher's Comment:</strong> <br><textarea rows="3" cols="30" placeholder="Enter comment..."></textarea><br>Signature: ________</div>
+          <div><strong>NEXT TERM BEGINS ON:</strong> 25th/May/2026</div>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin:10px 0;">
+          <div><strong>DEBT(s):</strong> ____________</div>
+          <div><strong>OTHER REQUIREMENTS:</strong> ____________</div>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <div><strong>HEADTEACHER'S COMMENT:</strong> <br><textarea rows="2" cols="30"></textarea></div>
+          <div><strong>HEAD TEACHER:</strong> ${data.school.headTeacher}</div>
+        </div>
+        <div style="margin-top:15px; border-top:2px solid #333; padding-top:10px;">
+          <table>
+            <tr><th>Grade</th><td>A</td><td>B</td><td>C</td><td>D</td><td>E</td></tr>
+            <tr><th>Range</th><td>80-100</td><td>70-79</td><td>60-69</td><td>50-59</td><td>0-49</td></tr>
+            <tr><th>Points</th><td>5</td><td>4</td><td>3</td><td>2</td><td>1</td></tr>
+          </table>
+        </div>
+      </div>
+    `;
+    document.getElementById('olevelReportArea').innerHTML = html;
+  }
+
+  // ============================================================
+  // PDF DOWNLOAD
+  // ============================================================
+  function downloadPDF(type) {
+    const area = document.getElementById(type === 'alevel' ? 'alevelReportArea' : 'olevelReportArea');
+    const content = area.querySelector(type === 'alevel' ? '#alevelReportContent' : '#olevelReportContent');
+    if (!content) return alert('Generate the report first.');
+    html2canvas(content, { scale: 2 }).then(canvas => {
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`${type.toUpperCase()}_Report_${Date.now()}.pdf`);
+    });
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  // Auth listener handles login and data loading.
+  // After login, populateAll() is called.
+</script>
+</body>
+  </html>
